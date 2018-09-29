@@ -28,7 +28,7 @@ public class VoteServlet extends HttpServlet {
 
 
     /**
-     *
+     * 动态调整服务器的处理能力
      * @param request
      * @param response
      * @throws ServletException
@@ -64,44 +64,21 @@ public class VoteServlet extends HttpServlet {
     private static int times = 20;
 
     static {
-//        executorService.scheduleAtFixedRate(VoteServlet::newEvent, 0, 2, TimeUnit.SECONDS);
         Executors.newSingleThreadExecutor().submit(()->{loop();});
 
     }
 
-    private static void newEvent() {
-        ArrayList<AsyncContext> clients = new ArrayList<>(queue.size());
-        queue.drainTo(clients);
-        clients.parallelStream().forEach( ac -> {
-//            ServletUtil.writeResponse(ac.getResponse(), "OK");
-            // connect to db and insert into db
-            ((HttpServletResponse)ac.getResponse()).setStatus(200);
-            ac.complete();
-        });
-    }
 
     /**
      * 每s的总处理能力上限为jobSize * times ，因为服务器的硬件处理能力有限，需要限制此数值大小
      */
     private static void loop() {
         while(true) {
-/*            es.submit(()->{
-                try {
-                    AsyncContext ac = queue.take();
-                    ((HttpServletResponse)ac.getResponse()).setStatus(200);
-                    ac.complete();
-
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            });*/
             try {
                 ArrayList<AsyncContext> clients = new ArrayList<>();
                 clients.add(queue.take());
                 queue.drainTo(clients, jobSize);
                 clients.parallelStream().forEach( ac -> {
-//            ServletUtil.writeResponse(ac.getResponse(), "OK");
-                    // connect to db and insert into db
                     ((HttpServletResponse)ac.getResponse()).setStatus(HttpServletResponse.SC_OK);
                     ac.complete();
                 });
@@ -109,9 +86,7 @@ public class VoteServlet extends HttpServlet {
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-
         }
-
     }
 
 
@@ -122,14 +97,6 @@ public class VoteServlet extends HttpServlet {
             logger.error("Exceed Server Capacity");
             // 如果加入队列失败，则返回capcity 异常
             ((HttpServletResponse)c.getResponse()).setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
-            /* if JDK9
-            final HttpHeaders headers = new HttpHeaders();
-                final Integer retryAfterMillis = command.getProperties()
-
-            .circuitBreakerSleepWindowInMilliseconds().get();
-
-            headers.set(HttpHeaders.RETRY_AFTER, Integer.toString(retryAfterMillis / 1000));
-            */
             c.getResponse().getWriter().write("Exceed Server Capacity.");
             c.complete();
         }
