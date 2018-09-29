@@ -1,6 +1,17 @@
 <component name="ArtifactManager">
   <artifact type="exploded-war" name="voteapp:war exploded">
-    <output-path>$PROJECT_DIR$/target/voteapp-1.0-SNAPSHOT</output-path>
-    <root id="root" />
+    <output-path>$PROJECT_DIR$/out/artifacts/voteapp_war_exploded</output-path>
+    <root id="root">
+      <element id="directory" name="WEB-INF">
+        <element id="directory" name="classes">
+          <element id="module-output" name="voteapp" />
+        </element>
+        <element id="directory" name="lib">
+          <element id="library" level="project" name="Maven: org.apache.logging.log4j:log4j-api:2.11.1" />
+          <element id="library" level="project" name="Maven: org.apache.logging.log4j:log4j-core:2.11.1" />
+        </element>
+      </element>
+      <element id="javaee-facet-resources" facet="voteapp/web/Web" />
+    </root>
   </artifact>
 </component>

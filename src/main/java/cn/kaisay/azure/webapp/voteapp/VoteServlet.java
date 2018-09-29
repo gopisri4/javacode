@@ -33,7 +33,7 @@ public class VoteServlet extends HttpServlet {
      * @param response
      * @throws ServletException
      */
-    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws  ServletException {
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         try {
             jobSize = Integer.parseInt(request.getParameter("jobSize"));
         } catch (Exception e) {
@@ -46,7 +46,12 @@ public class VoteServlet extends HttpServlet {
             times = 100;
         }
 
-        System.out.println("Set the jobsize to "+jobSize+" and times to "+times);
+//        System.out.println("Set1    the jobsIze to "+jobSize+" and times to "+times);
+//        System.out.println("Set1    the jobsize to "+jobSize+" and times to "+times);
+        response.setContentType("text/html;charset=utf-8");
+        response.setStatus(HttpServletResponse.SC_OK);
+        response.getWriter().write("Set the jobsize to "+jobSize+" and times to "+times+"queue now is "+queue.size());
+
     }
 
     private static ScheduledExecutorService executorService = Executors.newScheduledThreadPool(1);
