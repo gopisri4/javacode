@@ -1,5 +1,10 @@
 package cn.kaisay.azure.webapp.voteapp;
 
+//import jdk.incubator.http.HttpHeaders;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import javax.servlet.AsyncContext;
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -15,8 +20,33 @@ import java.util.concurrent.*;
 @WebServlet(asyncSupported = true, value = "/vote")
 public class VoteServlet extends HttpServlet {
 
-    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+    private static Logger logger = LogManager.getLogger();
+
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         addToWaitingList(request.startAsync());
+    }
+
+
+    /**
+     *
+     * @param request
+     * @param response
+     * @throws ServletException
+     */
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws  ServletException {
+        try {
+            jobSize = Integer.parseInt(request.getParameter("jobSize"));
+        } catch (Exception e) {
+            jobSize = 10;
+        }
+
+        try {
+            times = Integer.parseInt(request.getParameter("times"));
+        } catch (Exception e) {
+            times = 100;
+        }
+
+        System.out.println("Set the jobsize to "+jobSize+" and times to "+times);
     }
 
     private static ScheduledExecutorService executorService = Executors.newScheduledThreadPool(1);
@@ -26,12 +56,12 @@ public class VoteServlet extends HttpServlet {
     /**
      * 最大每次100个线程同时处理
      */
-    private static final int jobSize = 100;
+    private static int jobSize = 100;
 
     /**
      * 每s最大批处理量
      */
-    private static final int times = 20;
+    private static int times = 20;
 
     static {
 //        executorService.scheduleAtFixedRate(VoteServlet::newEvent, 0, 2, TimeUnit.SECONDS);
@@ -72,7 +102,7 @@ public class VoteServlet extends HttpServlet {
                 clients.parallelStream().forEach( ac -> {
 //            ServletUtil.writeResponse(ac.getResponse(), "OK");
                     // connect to db and insert into db
-                    ((HttpServletResponse)ac.getResponse()).setStatus(200);
+                    ((HttpServletResponse)ac.getResponse()).setStatus(HttpServletResponse.SC_OK);
                     ac.complete();
                 });
                 Thread.sleep(1000/(times>0?times:1));
@@ -85,7 +115,23 @@ public class VoteServlet extends HttpServlet {
     }
 
 
-    public static void addToWaitingList(AsyncContext c) {
-        queue.add(c);
+    public static void addToWaitingList(AsyncContext c) throws IOException {
+        try {
+            queue.add(c);
+        } catch (Exception e) {
+            logger.error("Exceed Server Capacity");
+            // 如果加入队列失败，则返回capcity 异常
+            ((HttpServletResponse)c.getResponse()).setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+            /* if JDK9
+            final HttpHeaders headers = new HttpHeaders();
+                final Integer retryAfterMillis = command.getProperties()
+
+            .circuitBreakerSleepWindowInMilliseconds().get();
+
+            headers.set(HttpHeaders.RETRY_AFTER, Integer.toString(retryAfterMillis / 1000));
+            */
+            c.getResponse().getWriter().write("Exceed Server Capacity.");
+            c.complete();
+        }
     }
 }
