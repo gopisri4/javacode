@@ -48,6 +48,7 @@ public class VoteServlet extends HttpServlet {
 
 //        System.out.println("Set1    the jobsIze to "+jobSize+" and times to "+times);
 //        System.out.println("Set1    the jobsize to "+jobSize+" and times to "+times);
+        logger.debug("Set the jobsize to "+jobSize+" and times to "+times+"queue now is "+queue.size());
         response.setContentType("text/html;charset=utf-8");
         response.setStatus(HttpServletResponse.SC_OK);
         response.getWriter().write("Set the jobsize to "+jobSize+" and times to "+times+"queue now is "+queue.size());
