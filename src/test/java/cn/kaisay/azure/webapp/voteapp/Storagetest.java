@@ -5,6 +5,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
+import java.util.Arrays;
 import java.util.Base64;
 
 public class Storagetest {
@@ -26,12 +27,13 @@ public class Storagetest {
 
         String StringToSign = accountname+signedpermissions+signedservice+signedresourcetype+signedstart
                                 +signedexpiry+signedIP+signedProtocol+signedversion;
+        System.out.println(Arrays.toString(keyBytes));
         System.out.println(URLEncoder.encode(SignUp(keyBytes,StringToSign)));
 
     }
 
 
-    public static String SignUp(byte[] secretKey, String plain) throws UnsupportedEncodingException {
+    public static String SignUp(byte[] keyBytes, String plain) throws UnsupportedEncodingException {
 
         String plainEncode = URLDecoder.decode(plain,"UTF8");
         byte[] plainBytes = plainEncode.getBytes();
@@ -41,16 +43,6 @@ public class Storagetest {
             SecretKeySpec secret_key = new SecretKeySpec(keyBytes, "HmacSHA256");
             sha256_HMAC.init(secret_key);
             byte[] hashs = sha256_HMAC.doFinal(plainBytes);
-/*          StringBuilder sb = new StringBuilder();
-                for (byte x : hashs) {
-                String b = Integer.toHexString(x & 0XFF);
-                if (b.length() == 1) {
-                    b = '0' + b;
-                }
-//	          sb.append(String.format("{0:x2}", x));
-                sb.append(b);
-            }
-            */
             String hash = Base64.getEncoder().encodeToString(hashs);
 	       return hash;
         } catch (Exception e) {
