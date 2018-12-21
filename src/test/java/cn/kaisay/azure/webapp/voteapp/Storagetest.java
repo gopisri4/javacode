@@ -14,9 +14,9 @@ public class Storagetest {
     private static String signedpermissions = "rwdlac"+ "\n" ;
     private static String signedservice = "b"+ "\n" ;
     private static String signedresourcetype = "sco"+ "\n" ;
-    private static String signedstart = "2018-11-13T13:49:09Z"+ "\n" ;
-    private static String signedexpiry = "2018-11-13T21:49:09Z"+ "\n" ;
-    private static String signedIP = "168.1.5.65" +"\n" ;
+    private static String signedstart = "2018-11-14T09:29:55Z"+ "\n" ;
+    private static String signedexpiry = "2018-11-14T17:29:55Z"+ "\n" ;
+    private static String signedIP = "" +"\n" ;
     private static String signedProtocol = "https"+ "\n" ;
     private static String signedversion = "2017-11-09"+"\n" ;
 

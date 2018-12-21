@@ -1,6 +1,0 @@
-<component name="ArtifactManager">
-  <artifact type="war" name="voteapp:war">
-    <output-path>$PROJECT_DIR$/target</output-path>
-    <root id="archive" name="voteapp-1.0-SNAPSHOT.war" />
-  </artifact>
-</component>

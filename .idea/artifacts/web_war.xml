@@ -1,7 +1,7 @@
 <component name="ArtifactManager">
   <artifact type="war" name="web:war">
     <output-path>$PROJECT_DIR$/out/artifacts/web_war</output-path>
-    <root id="archive" name="ROOT.war">
+    <root id="archive" name="voteapp-1.0-SNAPSHOT.war">
       <element id="artifact" artifact-name="voteapp:war exploded" />
     </root>
   </artifact>
