@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Random;
+import java.util.concurrent.locks.StampedLock;
 import java.util.stream.Collectors;
 
 public class BizTask {
@@ -29,6 +30,10 @@ public class BizTask {
     private LocalDateTime timeout = start.plusSeconds(10);
 
     private Duration processingTime;
+
+    private volatile boolean done;
+
+    private final StampedLock stampedLock = new StampedLock();
 
     public AsyncContext getAc() {
         return ac;
@@ -67,12 +72,38 @@ public class BizTask {
             logger.error(()->"error when encoding the json file.",e);
         }
         try {
+            logger.debug("wait for "+processingTime);
             Thread.sleep(processingTime.toMillis());
 //            Thread.sleep(1000);// test for timeout
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
+        done();
+        logger.debug("finish task with waiting for "+processingTime);
 
+    }
+
+    private void done() {
+        long stamp = stampedLock.writeLock();
+        try {
+            done = true;
+        } finally {
+            stampedLock.unlock(stamp);
+        }
+
+    }
+
+    /**
+     * wait if the task is done
+     */
+    public void going() {
+        logger.debug("going1 "+done);
+
+        while(!done){
+
+            if(done) break;
+        }
+        logger.debug("going2 "+done);
     }
 
     public void ok() {
@@ -86,6 +117,7 @@ public class BizTask {
                 +" | with timeLeft is "+timeLeft());
         getResp().addHeader("slowQueuq","y");
         getResp().addHeader("time0",Duration.between(start,LocalDateTime.now()).toString());
+        getResp().addHeader("timeout","start @ "+start+" timeout @ "+LocalDateTime.now());
         getResp().setStatus(HttpServletResponse.SC_OK);
         getAc().complete();
     }

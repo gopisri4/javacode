@@ -49,6 +49,8 @@ public class VoteServlet extends HttpServlet {
 
     private ScheduledExecutorService monitorScheduler = Executors.newScheduledThreadPool(1);
 
+    private ScheduledThreadPoolExecutor delayer = new ScheduledThreadPoolExecutor(1);
+
     private static final BlockingQueue<AsyncContext> queue = new ArrayBlockingQueue<>(20000);
 
     private static final BlockingQueue<BizTask> slowQueue = new ArrayBlockingQueue<>(500);
@@ -126,6 +128,26 @@ public class VoteServlet extends HttpServlet {
         },0,1,TimeUnit.MINUTES);
     }
 
+    public <T> CompletableFuture<T> timeoutAfter(long timeout, TimeUnit unit) {
+        CompletableFuture<T> result = new CompletableFuture<T>();
+        delayer.schedule(() -> result.completeExceptionally(new TimeoutException()), timeout, unit);
+        return result;
+    }
+
+    public <T> CompletableFuture<T> slowTimeoutAfter(BizTask task) {
+        //启动一个新的定时任务，在设定时间后抛出异常
+        CompletableFuture<T> result = new CompletableFuture<>();
+        logger.debug("the task left is "+task.timeLeft());
+        delayer.schedule(() -> result.completeExceptionally(new TimeoutException()), task.timeLeft().toMillis(), TimeUnit.MILLISECONDS);
+        return result;
+    }
+
+
+//    public <Void> CompletableFuture<Void> timeoutAfterV(long timeout, TimeUnit unit) {
+//        CompletableFuture<Void> result = new CompletableFuture<>();
+//        delayer.schedule(() -> result.completeExceptionally(new TimeoutException()), timeout, unit);
+//        return result;
+//    }
 
     private void slowLoop() {
         while(true) {
@@ -136,19 +158,22 @@ public class VoteServlet extends HttpServlet {
                 clients.forEach(task->{
                     CompletableFuture.runAsync(()->{
                         logger.info(()->"[slow] starting to get the vote data from the request and persistence it.");
-                    }).orTimeout(task.timeLeft().toMillis(), TimeUnit.MICROSECONDS).whenComplete(
-                            (v,e)->{
-                                if (e == null) {
+                    }).acceptEither(
+                            slowTimeoutAfter(task),
+                            tas->{
+                                    task.going();
+                            }).whenComplete((v,e)->{
+                                if(e == null) {
                                     task.slowOk();
-                                } else if(e instanceof TimeoutException) {
+                                } else if(e.getCause() instanceof TimeoutException) {
                                     task.timeout();
                                 } else {
-                                    logger.error(()->"error when processing slowQueue...");
+                                    logger.error(()->"2222error when processing slowQueue...");
                                     e.printStackTrace();
                                     task.error();
                                 }
-                            }
-                    );
+                    });
+
                 });
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -175,11 +200,12 @@ public class VoteServlet extends HttpServlet {
                                 logger.info(()->"[1] starting to get the vote data from the request and persistence it.");
                                 task.processing();
                             })
-                            .orTimeout(3,TimeUnit.SECONDS)
-                            .whenComplete((v,error)->{
-                                if(error == null) {
+                            .acceptEither(timeoutAfter(3,TimeUnit.SECONDS),tas->{
+
+                            }).whenComplete((v,error)->{
+                                if (error == null) {
                                     task.ok();
-                                } else if (error instanceof TimeoutException) {
+                                } else if (error.getCause() instanceof TimeoutException) {
                                     try {
                                         logger.warn(()->"request processing is slow, adding to the slowQueue.");
                                         slowQueue.add(task);
@@ -190,11 +216,31 @@ public class VoteServlet extends HttpServlet {
                                         task.unavailable();
                                     }
                                 } else {
-                                    logger.error(()->"error when accept queue");
+                                    logger.error(()->"111error when accept queue");
                                     error.printStackTrace();
                                     task.error();
                                 }
-                            });
+                    });
+//                            .(3,TimeUnit.SECONDS)
+//                            .whenComplete((v,error)->{
+//                                if(error == null) {
+//                                    task.ok();
+//                                } else if (error instanceof TimeoutException) {
+//                                    try {
+//                                        logger.warn(()->"request processing is slow, adding to the slowQueue.");
+//                                        slowQueue.add(task);
+//                                    } catch (Exception e) {
+//                                        logger.error(()->"error when moving to the slowQueue...");
+//                                        e.printStackTrace();
+//                                        this.setHealthy(false);
+//                                        task.unavailable();
+//                                    }
+//                                } else {
+//                                    logger.error(()->"error when accept queue");
+//                                    error.printStackTrace();
+//                                    task.error();
+//                                }
+//                            });
 
                 });
                 Thread.sleep(1000/(times>0?times:1));
