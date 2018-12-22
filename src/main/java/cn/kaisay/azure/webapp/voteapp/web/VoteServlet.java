@@ -142,13 +142,6 @@ public class VoteServlet extends HttpServlet {
         return result;
     }
 
-
-//    public <Void> CompletableFuture<Void> timeoutAfterV(long timeout, TimeUnit unit) {
-//        CompletableFuture<Void> result = new CompletableFuture<>();
-//        delayer.schedule(() -> result.completeExceptionally(new TimeoutException()), timeout, unit);
-//        return result;
-//    }
-
     private void slowLoop() {
         while(true) {
             ArrayList<BizTask> clients = new ArrayList<>();
@@ -221,27 +214,6 @@ public class VoteServlet extends HttpServlet {
                                     task.error();
                                 }
                     });
-//                            .(3,TimeUnit.SECONDS)
-//                            .whenComplete((v,error)->{
-//                                if(error == null) {
-//                                    task.ok();
-//                                } else if (error instanceof TimeoutException) {
-//                                    try {
-//                                        logger.warn(()->"request processing is slow, adding to the slowQueue.");
-//                                        slowQueue.add(task);
-//                                    } catch (Exception e) {
-//                                        logger.error(()->"error when moving to the slowQueue...");
-//                                        e.printStackTrace();
-//                                        this.setHealthy(false);
-//                                        task.unavailable();
-//                                    }
-//                                } else {
-//                                    logger.error(()->"error when accept queue");
-//                                    error.printStackTrace();
-//                                    task.error();
-//                                }
-//                            });
-
                 });
                 Thread.sleep(1000/(times>0?times:1));
             } catch (InterruptedException e) {
