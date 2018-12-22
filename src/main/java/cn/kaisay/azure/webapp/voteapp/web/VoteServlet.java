@@ -53,6 +53,11 @@ public class VoteServlet extends HttpServlet {
 
     private static final BlockingQueue<BizTask> slowQueue = new ArrayBlockingQueue<>(500);
 
+    private static final String javaVersion =
+            "java.specification.version"+System.getProperty("java.specification.version")
+            +"java.specification.vendor"+System.getProperty("java.specification.vendor")
+            +"java.specification.name"+System.getProperty("java.specification.name");
+
     public boolean isHealthy() {
         return healthy;
     }
@@ -105,6 +110,7 @@ public class VoteServlet extends HttpServlet {
 
     @Override
     protected void doHead(HttpServletRequest req, HttpServletResponse resp)  {
+//        resp.addHeader("java runtime",javaVersion);
         if(!isHealthy()) {
             resp.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
             resp.addHeader(SERVER_HEALTHY_FLAG,"status:no current queue size is "+queue.size());
@@ -136,7 +142,8 @@ public class VoteServlet extends HttpServlet {
                 clients.forEach(task->{
                     CompletableFuture.runAsync(()->{
                         logger.info(()->"[slow] starting to get the vote data from the request and persistence it.");
-                    }).orTimeout(task.timeLeft().toMillis(), TimeUnit.MICROSECONDS).whenComplete(
+                        task.going();
+                    }).orTimeout(task.timeLeft().toMillis(), TimeUnit.MILLISECONDS).whenComplete(
                             (v,e)->{
                                 if (e == null) {
                                     task.slowOk();
