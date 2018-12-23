@@ -2,6 +2,7 @@ package cn.kaisay.azure.webapp.voteapp.biz;
 
 import cn.kaisay.azure.webapp.voteapp.model.Vote;
 import com.google.gson.Gson;
+import com.google.gson.stream.MalformedJsonException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -59,32 +60,44 @@ public class BizTask {
 
     public void processing(){
         //TODO connect to MySQL and persistence
-        Random random = new Random();
-        processingTime = Duration.ofSeconds(random.nextInt(7));
+        long stamp = 0;
         try(BufferedReader br = getReq().getReader()){
+            stamp = begin();
+            Random random = new Random();
+            processingTime = Duration.ofSeconds(random.nextInt(7));
             String json = br.lines().collect(Collectors.joining());
-//            logger.debug(()->json);
             Gson gson = new Gson();
             Vote v = gson.fromJson(json,Vote.class);
             logger.debug(()->v);
-        }catch (IOException e) {
-            logger.error(()->"error when encoding the json file.",e);
-        }
-        try {
             logger.debug("wait for "+processingTime);
             Thread.sleep(processingTime.toMillis());
-//            Thread.sleep(1000);// test for timeout
         } catch (InterruptedException e) {
             e.printStackTrace();
+//            throw new RuntimeException();
+        } catch (MalformedJsonException e) {
+            e.printStackTrace();
+//            throw new RuntimeException(e);
+        } catch (IOException e) {
+            logger.error(()->"error when encoding the json file.",e);
+        }  catch (Exception e) {
+            e.printStackTrace();
+//            throw new RuntimeException(e);
+        } finally {
+            logger.debug("begin done");
+            done(stamp);
+            logger.debug("end done");
         }
-        done();
+
         logger.debug("finish task with waiting for "+processingTime);
 
     }
 
-    private void done() {
-        long stamp = stampedLock.writeLock();
+    private void done(long stamp) {
+        logger.debug(()->"done()@"+Thread.currentThread().getName());
+
+        if(stampedLock.validate(stamp))
         try {
+            logger.debug("release the lock");
             done = true;
         } finally {
             stampedLock.unlock(stamp);
@@ -92,14 +105,21 @@ public class BizTask {
 
     }
 
+    private long begin() {
+        logger.debug(()->"begin()@"+Thread.currentThread().getName());
+        done = false;
+        return  stampedLock.writeLock();
+
+    }
+
     /**
      * wait if the task is done
      */
     public void going() {
+        logger.debug(()->Thread.currentThread().getName()+" try to get the write lock.");
+        stampedLock.writeLock();
         logger.debug("going1 "+done);
-
         while(!done){
-
             if(done) break;
         }
         logger.debug("going2 "+done);

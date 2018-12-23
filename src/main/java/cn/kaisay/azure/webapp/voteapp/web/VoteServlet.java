@@ -211,6 +211,7 @@ public class VoteServlet extends HttpServlet {
             ArrayList<BizTask> clients = new ArrayList<>();
             try {
                 clients.add(slowQueue.take());
+                logger.info(() -> "1[slow] starting to get the vote data from the request and persistence it.");
                 slowQueue.drainTo(clients, jobSize);
                 clients.forEach(task -> {
                     CompletableFuture.runAsync(() -> {
@@ -254,8 +255,7 @@ public class VoteServlet extends HttpServlet {
                     CompletableFuture.runAsync(() -> {
                         logger.info(() -> "[1] starting to get the vote data from the request and persistence it.");
                         task.processing();
-                    })
-                            .orTimeout(3, TimeUnit.SECONDS)
+                    }).orTimeout(3, TimeUnit.SECONDS)
                             .whenComplete((v, error) -> {
                                 if (error == null) {
                                     task.ok();
