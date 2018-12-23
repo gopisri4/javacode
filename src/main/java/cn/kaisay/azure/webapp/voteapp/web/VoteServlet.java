@@ -13,10 +13,14 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 
-@WebServlet(asyncSupported = true, value = "/vote")
+@WebServlet(asyncSupported = true, value = "/vote/*")
 public class VoteServlet extends HttpServlet {
 
     private static final BlockingQueue<AsyncContext> queue = new ArrayBlockingQueue<>(20000);
@@ -25,15 +29,21 @@ public class VoteServlet extends HttpServlet {
             "java.specification.version" + System.getProperty("java.specification.version")
                     + "java.specification.vendor" + System.getProperty("java.specification.vendor")
                     + "java.specification.name" + System.getProperty("java.specification.name");
-    private static Logger logger = LogManager.getLogger();
+    private static final int processors = Runtime.getRuntime().availableProcessors() == 0
+            ? 1 : Runtime.getRuntime().availableProcessors();
     /**
      * 最大每次100个线程同时处理
      */
-    private static int jobSize = 100;
+    private static final int maxJobSize = 1000 * processors;
+    private static final int minJobSize = 100;
     /**
      * 每s最大批处理量
      */
-    private static int times = 20;
+    private static final int minTimes = 1;
+    private static final int maxTimes = 250;
+    private static Logger logger = LogManager.getLogger();
+    private static volatile int jobSize = 100 * processors;
+    private static volatile int times = 20;
     private final String SERVER_HEALTHY_FLAG = "healthy";
     private boolean healthy = true;
     private long timeout = 3000;
@@ -83,28 +93,106 @@ public class VoteServlet extends HttpServlet {
      * @throws ServletException
      */
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        /**
+         * the path like /vote/setup/jobSize/10/times/100
+         */
+        Optional<String> pathInfo = Optional.ofNullable(request.getPathInfo());
+        pathInfo.ifPresentOrElse(path -> {
+            logger.debug(() -> "there's an extra path string existing.." + path);
+            //TODO get the parameters from path to setup the jobsize the job frequency
+            List<String> args = Arrays.asList(path.split("/"))
+                    .stream().filter(s -> !s.isEmpty()).collect(Collectors.toList());
+            logger.debug("the arg list is " + args);
+            if (args.isEmpty()) {
+                doDefault(request, response);
+                return;
+            }
+            switch (args.get(0)) {
+                case "setup":
+                    doSetup(args.subList(1, args.size()), request, response);
+                    break;
+                default:
+                    doDefault(request, response);
+            }
+        }, () -> {
+            logger.debug(() -> "there's no extra path string existing..");
+            doDefault(request, response);
+        });
+
+    }
+
+    private synchronized void doSetup(List<String> args, HttpServletRequest request, HttpServletResponse response) {
+        Setup setup = new Setup();
         try {
-            jobSize = Integer.parseInt(request.getParameter("jobSize"));
+            if (validate(args, setup)) {
+                jobSize = setup.getJobSize().orElse(jobSize);
+                times = setup.getTimes().orElse(times);
+            }
+            doDefault(request, response);
         } catch (Exception e) {
-            jobSize = 10;
+            logger.warn("setup action is wrong, the args is " + args);
+            doDefaultError(e.getMessage() +
+                    " the setup action restPath should be like " +
+                    "/setup/job/x/times/y x's range is [100,100*processor number] and y's range is [10,500]", request, response);
         }
 
-        try {
-            times = Integer.parseInt(request.getParameter("times"));
-        } catch (Exception e) {
-            times = 100;
+
+    }
+
+    private void doDefaultError(String message, HttpServletRequest request, HttpServletResponse response) {
+        request.setAttribute("message", message);
+        response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+        response.addHeader("message", message);
+        doDefault(request, response);
+    }
+
+    private boolean validate(List<String> args, Setup setup) {
+        //TODO validate the data to construct a param map {jobsize->jobsize;times->times}
+        if (args == null || args.size() == 0 || args.size() % 2 != 0) {
+            throw new RuntimeException("the arg format is not right");
+        }
+        if (!args.get(0).matches("^[Jj]([oO][Bb])?$")) {
+            throw new RuntimeException("the first arg should be \"job\", it's case insensitive");
         }
 
-        logger.debug("Set the jobsize to " + jobSize + " and times to " + times + "queue now is " + queue.size());
-        response.setContentType("text/html;charset=utf-8");
-        response.setStatus(HttpServletResponse.SC_OK);
-        response.getWriter().write("Set the jobsize to " + jobSize + " and times to " + times + " queue now is " + queue.size());
+        if (!args.get(2).matches("^[Tt]([Ii][Mm][Ee])?$")) {
+            throw new RuntimeException("the second arg should be \"time\", it's case insensitive");
+        }
+
+        int jobsize = Integer.parseInt(args.get(1));
+        jobsize = Integer.max(minJobSize, jobsize);
+        jobsize = Integer.min(maxJobSize, jobsize);
+        int times = Integer.parseInt(args.get(3));
+        times = Integer.max(minTimes, times);
+        times = Integer.min(maxTimes, times);
+
+        setup.setJobSize(Optional.of(jobsize));
+        setup.setTimes(Optional.of(times));
+
+        return true;
+    }
+
+    private void doDefault(HttpServletRequest request, HttpServletResponse response) {
+        request.setAttribute("jobSize", jobSize);
+        request.setAttribute("times", times);
+        request.setAttribute("queueSize", queue.size());
+        request.setAttribute("slowQueueSize", slowQueue.size());
+        try {
+            getServletContext()
+                    .getRequestDispatcher("/status.jsp")
+                    .forward(request, response);
+        } catch (ServletException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
 
     }
 
     @Override
     protected void doHead(HttpServletRequest req, HttpServletResponse resp) {
-//        resp.addHeader("java runtime",javaVersion);
+        resp.addHeader("java runtime", javaVersion);
         if (!isHealthy()) {
             resp.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
             resp.addHeader(SERVER_HEALTHY_FLAG, "status:no current queue size is " + queue.size());
@@ -115,6 +203,9 @@ public class VoteServlet extends HttpServlet {
 
     }
 
+    /**
+     * 慢队列的处理，如果超过设定时间，则强制退出
+     */
     private void slowLoop() {
         while (true) {
             ArrayList<BizTask> clients = new ArrayList<>();
