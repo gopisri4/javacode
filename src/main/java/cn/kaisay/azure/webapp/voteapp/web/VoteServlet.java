@@ -17,6 +17,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 
@@ -52,10 +53,12 @@ public class VoteServlet extends HttpServlet {
     private ExecutorService executorService = Executors.newSingleThreadExecutor();
     private ExecutorService executorSlowLoopService = Executors.newSingleThreadExecutor();
     private ScheduledExecutorService monitorScheduler = Executors.newScheduledThreadPool(1);
+    public static ScheduledExecutorService slowMonitorScheduler = Executors.newScheduledThreadPool(1);
+    public static AtomicInteger slowNumber = new AtomicInteger(0);
 
     {
         executorService.submit(() -> acceptLoop());
-        executorSlowLoopService.submit(() -> slowLoop());
+//        executorSlowLoopService.submit(() -> slowLoop());
         monitorScheduler.scheduleAtFixedRate(() -> {
             if (queue.size() != quequeSize && slowQueue.size() != slowQuequeSize) {
                 setHealthy(true);
@@ -111,6 +114,9 @@ public class VoteServlet extends HttpServlet {
                 case "setup":
                     doSetup(args.subList(1, args.size()), request, response);
                     break;
+                case "random":
+                    doRandom(args.subList(1, args.size()), request, response);
+                    break;
                 default:
                     doDefault(request, response);
             }
@@ -119,6 +125,11 @@ public class VoteServlet extends HttpServlet {
             doDefault(request, response);
         });
 
+    }
+
+    private void doRandom(List<String> subList, HttpServletRequest request, HttpServletResponse response) {
+        //TODO to config the pcocessing time boundary
+        doDefault(request,response);
     }
 
     private synchronized void doSetup(List<String> args, HttpServletRequest request, HttpServletResponse response) {
@@ -147,7 +158,6 @@ public class VoteServlet extends HttpServlet {
     }
 
     private boolean validate(List<String> args, Setup setup) {
-        //TODO validate the data to construct a param map {jobsize->jobsize;times->times}
         if (args == null || args.size() == 0 || args.size() % 2 != 0) {
             throw new RuntimeException("the arg format is not right");
         }
@@ -206,7 +216,7 @@ public class VoteServlet extends HttpServlet {
     /**
      * 慢队列的处理，如果超过设定时间，则强制退出
      */
-    private void slowLoop() {
+/*    private void slowLoop() {
         while (true) {
             ArrayList<BizTask> clients = new ArrayList<>();
             try {
@@ -237,7 +247,7 @@ public class VoteServlet extends HttpServlet {
 
         }
 
-    }
+    }*/
 
     /**
      * 每s的总处理能力上限为jobSize * times ，因为服务器的硬件处理能力有限，需要限制此数值大小
@@ -262,7 +272,9 @@ public class VoteServlet extends HttpServlet {
                                 } else if (error instanceof TimeoutException) {
                                     try {
                                         logger.warn(() -> "request processing is slow, adding to the slowQueue.");
-                                        slowQueue.add(task);
+                                        //TODO 需要修改逻辑，如果当slow 处理出现，不需要加入新的队列，需要能够monitor，那么会有两种方式，在任务本身加入一个超时提醒
+//                                        slowQueue.add(task);
+                                        task.slow();
                                     } catch (Exception e) {
                                         logger.error(() -> "error when moving to the slowQueue...");
                                         e.printStackTrace();
