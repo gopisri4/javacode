@@ -14,6 +14,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.StampedLock;
@@ -62,10 +63,24 @@ public class BizTask {
     }
 
     public void processing() {
+        status = Status.PROCESSING;
+        VoteServlet.slowMonitorScheduler.schedule(() -> {
+            long st = stampedLock.writeLock();
+            try {
+                logger.debug("mark the process is timeout, add to the slow monitor");
+                status = Status.TIMEOUT;
+                VoteServlet.slowNumber.incrementAndGet();
+//                process.interrupt();
+            } finally {
+                stampedLock.unlock(st);
+            }
+
+
+        }, 3, TimeUnit.SECONDS);
+
         //TODO connect to MySQL and persistence
 //        long stamp = stampedLock.tryOptimisticRead();
-        status = Status.PROCESSING;
-        process = Thread.currentThread();
+
         try (BufferedReader br = getReq().getReader()) {
 
             processingTime = Duration.ofMillis(
@@ -102,24 +117,23 @@ public class BizTask {
 
     private void done() {
         logger.debug(() -> "done()@" + Thread.currentThread().getName());
+//        long stamp = stampedLock.tryOptimisticRead();
         long stamp = 0;
         try {
-                stamp = stampedLock.writeLock();
-                if(status == Status.TIMEOUT) {
-                    logger.debug("----timeout ok");
-                    slowOk();
-                    VoteServlet.slowNumber.decrementAndGet();
-                    logger.debug("timeout ok");
-                } else if (status == Status.TIMEOUTED) {
-                    logger.debug("----timeouted 1");
-                    timeouted();
-                    VoteServlet.slowNumber.decrementAndGet();
-                    logger.debug("----timeouted");
-                } else {
-                    logger.debug("====ok");
-                    ok();
-                    logger.debug("----ok");
-                }
+//                if(!stampedLock.validate(stamp)) {
+                    stamp = stampedLock.readLock();
+                    if(status == Status.TIMEOUT) {
+                        logger.debug("----timeout ok");
+                        slowOk();
+                        VoteServlet.slowNumber.decrementAndGet();
+                        logger.debug("timeout ok");
+                    } else {
+                        logger.debug("====ok");
+                        ok();
+                        logger.debug("----ok");
+                    }
+
+
         } finally {
             stampedLock.unlock(stamp);
 
@@ -198,33 +212,6 @@ public class BizTask {
         return past.isNegative() ? Duration.ZERO : past;
     }
 
-    public void slow() {
-        long stamp = stampedLock.tryOptimisticRead();
-        try {
-            long ws = stampedLock.tryConvertToWriteLock(stamp);
-            //which means no other thread is updating the data
-            if (ws != 0) {
-                stamp = ws;
-                status = Status.TIMEOUT;
-            }
-        } finally {
-            stampedLock.unlock(stamp);
-        }
-
-        VoteServlet.slowMonitorScheduler.schedule(() -> {
-            long st = stampedLock.writeLock();
-            try {
-                logger.debug("mark the process is timeout, try to interrupt it.");
-                status = Status.TIMEOUTED;
-                process.interrupt();
-            } finally {
-                stampedLock.unlock(st);
-            }
-
-
-        }, timeLeft().toMillis(), TimeUnit.MILLISECONDS);
-        VoteServlet.slowNumber.incrementAndGet();
-    }
 
     enum Status {
         NEW,
@@ -232,6 +219,7 @@ public class BizTask {
         PROCESSING,
         TIMEOUT,
         TIMEOUTED,
+        EXCEPTION,
         DONE
     }
 }

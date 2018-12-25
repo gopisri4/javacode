@@ -186,7 +186,7 @@ public class VoteServlet extends HttpServlet {
         request.setAttribute("jobSize", jobSize);
         request.setAttribute("times", times);
         request.setAttribute("queueSize", queue.size());
-        request.setAttribute("slowQueueSize", slowQueue.size());
+        request.setAttribute("slowQueueSize", slowNumber.get());
         try {
             getServletContext()
                     .getRequestDispatcher("/status.jsp")
@@ -265,7 +265,7 @@ public class VoteServlet extends HttpServlet {
                     CompletableFuture.runAsync(() -> {
                         logger.info(() -> "[1] starting to get the vote data from the request and persistence it.");
                         task.processing();
-                    }).orTimeout(3, TimeUnit.SECONDS)
+                    }).orTimeout(10, TimeUnit.SECONDS)
                             .whenComplete((v, error) -> {
                                 if (error == null) {
                                     task.ok();
@@ -274,7 +274,8 @@ public class VoteServlet extends HttpServlet {
                                         logger.warn(() -> "request processing is slow, adding to the slowQueue.");
                                         //TODO 需要修改逻辑，如果当slow 处理出现，不需要加入新的队列，需要能够monitor，那么会有两种方式，在任务本身加入一个超时提醒
 //                                        slowQueue.add(task);
-                                        task.slow();
+                                        task.timeouted();
+//                                        task.slow();
                                     } catch (Exception e) {
                                         logger.error(() -> "error when moving to the slowQueue...");
                                         e.printStackTrace();
