@@ -213,43 +213,7 @@ public class VoteServlet extends HttpServlet {
         }
 
     }
-
-    /**
-     * 慢队列的处理，如果超过设定时间，则强制退出
-     */
-/*    private void slowLoop() {
-        while (true) {
-            ArrayList<BizTask> clients = new ArrayList<>();
-            try {
-                clients.add(slowQueue.take());
-                logger.info(() -> "1[slow] starting to get the vote data from the request and persistence it.");
-                slowQueue.drainTo(clients, jobSize);
-                clients.forEach(task -> {
-                    CompletableFuture.runAsync(() -> {
-                        logger.info(() -> "[slow] starting to get the vote data from the request and persistence it.");
-                        task.going();
-                    }).orTimeout(task.timeLeft().toMillis(), TimeUnit.MILLISECONDS).whenComplete(
-                            (v, e) -> {
-                                if (e == null) {
-                                    task.slowOk();
-                                } else if (e instanceof TimeoutException) {
-                                    task.timeout();
-                                } else {
-                                    logger.error(() -> "error when processing slowQueue...");
-                                    e.printStackTrace();
-                                    task.error();
-                                }
-                            }
-                    );
-                });
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-
-        }
-
-    }*/
-
+    
     /**
      * 每s的总处理能力上限为jobSize * times ，因为服务器的硬件处理能力有限，需要限制此数值大小
      */
