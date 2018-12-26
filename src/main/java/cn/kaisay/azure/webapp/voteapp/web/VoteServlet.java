@@ -2,6 +2,7 @@ package cn.kaisay.azure.webapp.voteapp.web;
 
 
 import cn.kaisay.azure.webapp.voteapp.biz.BizTask;
+import cn.kaisay.azure.webapp.voteapp.model.Setup;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

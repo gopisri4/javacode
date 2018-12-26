@@ -1,4 +1,4 @@
-package cn.kaisay.azure.webapp.voteapp.web;
+package cn.kaisay.azure.webapp.voteapp.model;
 
 import java.util.Optional;
 
