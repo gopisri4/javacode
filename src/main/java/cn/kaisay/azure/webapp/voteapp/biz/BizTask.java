@@ -3,7 +3,7 @@ package cn.kaisay.azure.webapp.voteapp.biz;
 import cn.kaisay.azure.webapp.voteapp.model.Vote;
 import cn.kaisay.azure.webapp.voteapp.web.VoteServlet;
 import com.google.gson.Gson;
-import com.google.gson.stream.MalformedJsonException;
+import com.google.gson.JsonSyntaxException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -14,7 +14,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.StampedLock;
@@ -32,9 +32,6 @@ public class BizTask {
     private LocalDateTime timeout = start.plusSeconds(10);
 
     private Duration processingTime;
-
-    private volatile boolean done;
-    private Thread process;
 
     public BizTask(AsyncContext ac) {
         this.ac = ac;
@@ -64,7 +61,8 @@ public class BizTask {
 
     public void processing() {
         status = Status.PROCESSING;
-        VoteServlet.slowMonitorScheduler.schedule(() -> {
+        //这种处理也有问题，如果很快完成的任务，也会继续添加monitor线程
+        ScheduledFuture sf = VoteServlet.slowMonitorScheduler.schedule(() -> {
             long st = stampedLock.writeLock();
             try {
                 logger.debug("mark the process is timeout, add to the slow monitor");
@@ -93,21 +91,19 @@ public class BizTask {
 //            stamp = begin();
             Thread.sleep(processingTime.toMillis());
         } catch (InterruptedException e) {
-            e.printStackTrace();
-
-//            throw new RuntimeException();
-        } catch (MalformedJsonException e) {
-            e.printStackTrace();
-
-//            throw new RuntimeException(e);
+            status = Status.EXCEPTION;
+        } catch (JsonSyntaxException e) {
+            status = Status.EXCEPTION;
+            logger.error(() -> "Json format is not right", e);
         } catch (IOException e) {
+            status = Status.EXCEPTION;
             logger.error(() -> "error when encoding the json file.", e);
         } catch (Exception e) {
-            e.printStackTrace();
-//            throw new RuntimeException(e);
+            status = Status.EXCEPTION;
         } finally {
             logger.debug("begin done");
             done();
+            sf.cancel(true);
             logger.debug("end done");
         }
 
@@ -117,54 +113,44 @@ public class BizTask {
 
     private void done() {
         logger.debug(() -> "done()@" + Thread.currentThread().getName());
-//        long stamp = stampedLock.tryOptimisticRead();
-        long stamp = 0;
+        long stamp = stampedLock.tryOptimisticRead();
+        Status st = status;
+//        long stamp = 0;
         try {
-//                if(!stampedLock.validate(stamp)) {
-                    stamp = stampedLock.readLock();
-                    if(status == Status.TIMEOUT) {
-                        logger.debug("----timeout ok");
-                        slowOk();
-                        VoteServlet.slowNumber.decrementAndGet();
-                        logger.debug("timeout ok");
-                    } else {
-                        logger.debug("====ok");
-                        ok();
-                        logger.debug("----ok");
-                    }
-
-
+            //如果当前现在没有别的线程持有写锁，则validate 返回true
+            if (!stampedLock.validate(stamp)) {
+                logger.warn("Ops!....there's another thread try to update the status.");
+//                stampedLock.unlockRead(stamp);
+                stamp = stampedLock.readLock(); //取得悲观读锁，说明此时已经没有比的写锁，拷贝变量进入自己的方法栈
+                try {
+                    st = status;   //以此时获取的状态为准，此时如果没有超时，则就是没有超时
+                } finally {
+                    stampedLock.unlock(stamp);
+                }
+            }
+            setDone(st);
         } finally {
-            stampedLock.unlock(stamp);
-
+            logger.debug("finish done...");
         }
 
     }
 
-    /**
-     * wait if the task is done
-     */
-    public void going() {
-        logger.debug(() -> Thread.currentThread().getName() + " try to get the write lock.");
-        stampedLock.writeLock();
-        logger.debug("going1 " + done);
-//        while(!(status == Status.DONE)){
-////            if(done) break;
-////
-//        }
-        logger.debug("going2 " + done);
+    private void setDone(Status s) {
+        if (s == Status.TIMEOUT) {
+            logger.debug("----timeout ok");
+            slowOk();
+            VoteServlet.slowNumber.decrementAndGet();
+            logger.debug("timeout ok");
+        } else if (s == Status.EXCEPTION) {
+            error();
+        } else {
+            logger.debug("====ok");
+            ok();
+            logger.debug("----ok");
+        }
+
     }
 
-
-    /**
-     * 这种用法是错误的
-     */
-//    private long begin() {
-//        logger.debug(()->"begin()@"+Thread.currentThread().getName());
-//        done = false;
-//        return  stampedLock.writeLock();
-//
-//    }
 
     public void ok() {
         getResp().addHeader("time0", Duration.between(start, LocalDateTime.now()).toString());
@@ -190,7 +176,7 @@ public class BizTask {
     }
 
     public void error() {
-//        logger.error(()->"error when processing",t);
+        logger.error(() -> "error when processing");
         getResp().addHeader("time0", Duration.between(start, LocalDateTime.now()).toString());
         getResp().setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
         getAc().complete();
