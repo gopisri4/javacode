@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
 public class VoteServlet extends HttpServlet {
 
     private static final BlockingQueue<AsyncContext> queue = new ArrayBlockingQueue<>(20000);
-    private static final BlockingQueue<BizTask> slowQueue = new ArrayBlockingQueue<>(500);
+//    private static final BlockingQueue<BizTask> slowQueue = new ArrayBlockingQueue<>(500);
     private static final String javaVersion =
             "java.specification.version" + System.getProperty("java.specification.version")
                     + "java.specification.vendor" + System.getProperty("java.specification.vendor")
@@ -48,11 +48,10 @@ public class VoteServlet extends HttpServlet {
     private static volatile int times = 20;
     private final String SERVER_HEALTHY_FLAG = "healthy";
     private boolean healthy = true;
-    private long timeout = 3000;
-    private int quequeSize = 20000;
-    private int slowQuequeSize = 5000;
+    private int maxQuequeSize = 20000;
+    private int maxSlowQuequeSize = 200;
     private ExecutorService executorService = Executors.newSingleThreadExecutor();
-    private ExecutorService executorSlowLoopService = Executors.newSingleThreadExecutor();
+//    private ExecutorService executorSlowLoopService = Executors.newSingleThreadExecutor();
     private ScheduledExecutorService monitorScheduler = Executors.newScheduledThreadPool(1);
     public static ScheduledExecutorService slowMonitorScheduler = Executors.newScheduledThreadPool(1);
     public static AtomicInteger slowNumber = new AtomicInteger(0);
@@ -61,7 +60,7 @@ public class VoteServlet extends HttpServlet {
         executorService.submit(() -> acceptLoop());
 //        executorSlowLoopService.submit(() -> slowLoop());
         monitorScheduler.scheduleAtFixedRate(() -> {
-            if (queue.size() != quequeSize && slowQueue.size() != slowQuequeSize) {
+            if (queue.size() != maxQuequeSize && slowNumber.get() != maxSlowQuequeSize) {
                 setHealthy(true);
             }
         }, 0, 1, TimeUnit.MINUTES);
@@ -79,27 +78,24 @@ public class VoteServlet extends HttpServlet {
         if (!isHealthy()) {
             response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
             response.addHeader(SERVER_HEALTHY_FLAG, "status: no. the queue size is: " + queue.size()
-                    + "; the slow queue is: " + slowQueue.size());
+                    + "; the slow queue is: " + slowNumber.get());
             return;
         }
         addToWaitingList(request.startAsync());
     }
 
-    private long maxTime() {
-        return 1000 / (times > 0 ? times : 1);
-    }
+//    private long maxTime() {
+//        return 1000 / (times > 0 ? times : 1);
+//    }
 
     /**
      * 动态调整服务器的处理能力
-     *
+     * the path like /vote/setup/jobSize/10/times/100
      * @param request
      * @param response
      * @throws ServletException
      */
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
-        /**
-         * the path like /vote/setup/jobSize/10/times/100
-         */
         Optional<String> pathInfo = Optional.ofNullable(request.getPathInfo());
         pathInfo.ifPresentOrElse(path -> {
             logger.debug(() -> "there's an extra path string existing.." + path);
@@ -128,6 +124,12 @@ public class VoteServlet extends HttpServlet {
 
     }
 
+    /**
+     * 配置mock任务的处理时间，随机处理
+     * @param subList
+     * @param request
+     * @param response
+     */
     private void doRandom(List<String> subList, HttpServletRequest request, HttpServletResponse response) {
         //TODO to config the pcocessing time boundary
         doDefault(request,response);
@@ -213,7 +215,7 @@ public class VoteServlet extends HttpServlet {
         }
 
     }
-    
+
     /**
      * 每s的总处理能力上限为jobSize * times ，因为服务器的硬件处理能力有限，需要限制此数值大小
      */
@@ -237,10 +239,7 @@ public class VoteServlet extends HttpServlet {
                                 } else if (error instanceof TimeoutException) {
                                     try {
                                         logger.warn(() -> "request processing is slow, adding to the slowQueue.");
-                                        //TODO 需要修改逻辑，如果当slow 处理出现，不需要加入新的队列，需要能够monitor，那么会有两种方式，在任务本身加入一个超时提醒
-//                                        slowQueue.add(task);
                                         task.timeouted();
-//                                        task.slow();
                                     } catch (Exception e) {
                                         logger.error(() -> "error when moving to the slowQueue...");
                                         e.printStackTrace();
