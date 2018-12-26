@@ -34,17 +34,17 @@ public class VoteServlet extends HttpServlet {
     private static final int processors = Runtime.getRuntime().availableProcessors() == 0
             ? 1 : Runtime.getRuntime().availableProcessors();
     /**
-     * 最大每次100个线程同时处理
+     * 最大每次同时处理500*processor numbers 个job
      */
-    private static final int maxJobSize = 1000 * processors;
+    private static final int maxJobSize = 500 * processors;
     private static final int minJobSize = 100;
     /**
-     * 每s最大批处理量
+     * 每s最大批处理量和最小批处理量
      */
     private static final int minTimes = 1;
     private static final int maxTimes = 250;
     private static Logger logger = LogManager.getLogger();
-    private static volatile int jobSize = 100 * processors;
+    private static volatile int jobSize = 50 * processors;
     private static volatile int times = 20;
     private final String SERVER_HEALTHY_FLAG = "healthy";
     private boolean healthy = true;
@@ -219,16 +219,15 @@ public class VoteServlet extends HttpServlet {
 
     /**
      * 每s的总处理能力上限为jobSize * times ，因为服务器的硬件处理能力有限，需要限制此数值大小
+     * 通过jobSize 和 times 控制从request等待队列处理的速度最大每s处理jobSize
      */
     private void acceptLoop() {
         while (true) {
             try {
                 ArrayList<BizTask> clients = new ArrayList<>();
                 clients.add(queue.take());
-                //通过jobSize 和 times 控制从request等待队列处理的速度最大每s处理jobSize
                 queue.drainTo(clients, jobSize);
                 clients.forEach(task -> {
-                    //当业务处理超时，则转交进入slowQueue
                     CompletableFuture.runAsync(() -> {
                         logger.info(() -> "[1] starting to get the vote data from the request and persistence it.");
                         task.processing();
