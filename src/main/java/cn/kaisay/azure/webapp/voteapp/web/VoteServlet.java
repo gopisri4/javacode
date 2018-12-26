@@ -25,12 +25,12 @@ import java.util.stream.Collectors;
 @WebServlet(asyncSupported = true, value = "/vote/*")
 public class VoteServlet extends HttpServlet {
 
-    private static final BlockingQueue<AsyncContext> queue = new ArrayBlockingQueue<>(20000);
+    private static final BlockingQueue<BizTask> queue = new ArrayBlockingQueue<>(20000);
 //    private static final BlockingQueue<BizTask> slowQueue = new ArrayBlockingQueue<>(500);
     private static final String javaVersion =
             "java.specification.version" + System.getProperty("java.specification.version")
-                    + "java.specification.vendor" + System.getProperty("java.specification.vendor")
-                    + "java.specification.name" + System.getProperty("java.specification.name");
+                    + " java.specification.vendor=> " + System.getProperty("java.specification.vendor")
+                    + " java.specification.name=> " + System.getProperty("java.specification.name");
     private static final int processors = Runtime.getRuntime().availableProcessors() == 0
             ? 1 : Runtime.getRuntime().availableProcessors();
     /**
@@ -190,6 +190,7 @@ public class VoteServlet extends HttpServlet {
         request.setAttribute("times", times);
         request.setAttribute("queueSize", queue.size());
         request.setAttribute("slowQueueSize", slowNumber.get());
+        request.setAttribute("jvm", javaVersion);
         try {
             getServletContext()
                     .getRequestDispatcher("/status.jsp")
@@ -222,17 +223,16 @@ public class VoteServlet extends HttpServlet {
     private void acceptLoop() {
         while (true) {
             try {
-                ArrayList<AsyncContext> clients = new ArrayList<>();
+                ArrayList<BizTask> clients = new ArrayList<>();
                 clients.add(queue.take());
                 //通过jobSize 和 times 控制从request等待队列处理的速度最大每s处理jobSize
                 queue.drainTo(clients, jobSize);
-                clients.forEach(ac -> {
+                clients.forEach(task -> {
                     //当业务处理超时，则转交进入slowQueue
-                    BizTask task = new BizTask(ac);
                     CompletableFuture.runAsync(() -> {
                         logger.info(() -> "[1] starting to get the vote data from the request and persistence it.");
                         task.processing();
-                    }).orTimeout(10, TimeUnit.SECONDS)
+                    }).orTimeout(task.howMuchTimeLeft().toMillis(), TimeUnit.MILLISECONDS)
                             .whenComplete((v, error) -> {
                                 if (error == null) {
                                     task.ok();
@@ -264,7 +264,8 @@ public class VoteServlet extends HttpServlet {
 
     public void addToWaitingList(AsyncContext c) throws IOException {
         try {
-            queue.add(c);
+            BizTask task = new BizTask(c);
+            queue.add(task);
             setHealthy(true);
         } catch (IllegalStateException ie) {
             logger.error(() -> "Exceed Server Capacity");
@@ -273,13 +274,11 @@ public class VoteServlet extends HttpServlet {
             ((HttpServletResponse) c.getResponse()).setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
             c.getResponse().getWriter().write("Exceed Server Capacity.");
             c.complete();
-
         } catch (Exception e) {
             logger.error(() -> "Server Error");
             ((HttpServletResponse) c.getResponse()).setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             c.getResponse().getWriter().write("Internal_server_error");
             c.complete();
-
         }
     }
 }

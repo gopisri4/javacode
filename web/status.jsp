@@ -46,7 +46,7 @@
     ${message}
   </div>
   <div class="alert alert-warning" role="alert">
-    A simple warning alert—check it out!
+    ${jvm}
   </div>
   <div class="alert alert-info" role="alert">
     A simple info alert—check it out!
